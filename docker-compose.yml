@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  couchdb-cluster:
+    image: couchdb:3
+    hostname: '${HOSTNAME_PREFIX}{{.Task.Slot}}'
+    deploy:
+      mode: replicated
+      replicas: ${COUCHDB_REPLICAS}
+      endpoint_mode: dnsrr
+      restart_policy:
+        condition: any
+        delay: 5s
+        window: 120s
+    environment:
+      COUCHDB_USER: ${COUCHDB_USER}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
+      COUCHDB_SECRET: ${COUCHDB_SECRET}
+      DOMAIN_NAME: '${DOMAIN_NAME}'
+      NODENAME: 'couchdb{{.Task.Slot}}.${DOMAIN_NAME}'
+      HOSTNAME: '${HOSTNAME_PREFIX}{{.Task.Slot}}'
+      ERL_FLAGS: '-setcookie ${COUCHDB_COOKIE}'
+    networks:
+      backend-network:
+        aliases:
+          - '${HOSTNAME}.${DOMAIN_NAME}'
+    volumes:
+      - './mnt/docker/couchdb/couchdb{{.Task.Slot}}/data:/opt/couchdb/data'
+      - './mnt/docker/couchdb/couchdb{{.Task.Slot}}/config:/opt/couchdb/etc/local.d'
+
+  couchdb-init:
+    image: debian:stable-slim
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    depends_on:
+      - couchdb
+    entrypoint: >
+      sh -c "/opt/couchdb/init-couchdb-cluster.sh"
+    environment:
+      COUCHDB_USER: ${COUCHDB_USER}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
+      COUCHDB_SECRET: ${COUCHDB_SECRET}
+      HOSTNAME_PREFIX: ${HOSTNAME_PREFIX}
+      DOMAIN_NAME: ${DOMAIN_NAME}
+      COUCHDB_REPLICAS: ${COUCHDB_REPLICAS}
+    volumes:
+      - './mnt/docker/couchdb/couchdb-init:/opt/couchdb/data'
+      - './mnt/docker/couchdb/couchdb-init/init-couchdb-cluster.sh:/opt/couchdb/init-couchdb-cluster.sh:ro'
+    networks:
+      backend-network:
+
+networks:
+  backend-network:
+    external: true
