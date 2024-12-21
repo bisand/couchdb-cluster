@@ -35,8 +35,6 @@ services:
       replicas: 1
       restart_policy:
         condition: on-failure
-    depends_on:
-      - couchdb
     entrypoint: >
       sh -c "/opt/couchdb/init-couchdb-cluster.sh"
     environment:
@@ -47,8 +45,8 @@ services:
       DOMAIN_NAME: ${DOMAIN_NAME}
       COUCHDB_REPLICAS: ${COUCHDB_REPLICAS}
     volumes:
-      - './mnt/docker/couchdb/couchdb-init:/opt/couchdb/data'
-      - './mnt/docker/couchdb/couchdb-init/init-couchdb-cluster.sh:/opt/couchdb/init-couchdb-cluster.sh:ro'
+      - './mnt/docker/couchdb:/opt/couchdb/data'
+      - './mnt/docker/couchdb/init-couchdb-cluster.sh:/opt/couchdb/init-couchdb-cluster.sh:ro'
     networks:
       backend-network:
 

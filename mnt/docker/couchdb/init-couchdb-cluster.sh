@@ -5,7 +5,7 @@ DEPLOYMENT_NAME=".${DOMAIN_NAME}"
 REPLICAS=${COUCHDB_REPLICAS}
 
 # Check if the cluster is already initialized or if node count has changed
-if [ -f /opt/couchdb/data/.cluster_initialized && $(cat /opt/couchdb/data/.cluster_initialized) -eq ${REPLICAS} ]; then
+if [[ -f /opt/couchdb/data/.cluster_initialized && $(cat /opt/couchdb/data/.cluster_initialized) -eq ${REPLICAS} ]]; then
   echo 'CouchDB cluster already initialized';
   exit 0;
 fi
@@ -22,6 +22,27 @@ if [ $OLD_NODE_COUNT -eq $NODE_COUNT ]; then
   echo 'Node count has not changed. Aborting initialization script';
   exit 0;
 fi
+
+# Make sure the cluster node folders exist. They are in the format of couchdb1, couchdb2, couchdb3, etc.
+# With subfolders for config, data and log
+DATA_FOLDER_ROOT="/opt/couchdb/data/"
+for NODE_ID in $(seq 1 $NODE_COUNT); do
+  NODE_FOLDER="${DATA_FOLDER_ROOT}${HOSTNAME_PREFIX}${NODE_ID}"
+  mkdir -p "${NODE_FOLDER}/config"
+  mkdir -p "${NODE_FOLDER}/data"
+  mkdir -p "${NODE_FOLDER}/log"
+  # Add the specified text to 00-default.ini
+  cat <<EOL > "${NODE_FOLDER}/config/00-default.ini"
+[chttpd]
+bind_address = 0.0.0.0
+
+[httpd]
+bind_address = 0.0.0.0
+
+[prometheus]
+bind_address = 0.0.0.0
+EOL
+done
 
 rm -f /opt/couchdb/data/.cluster_initialized
 
