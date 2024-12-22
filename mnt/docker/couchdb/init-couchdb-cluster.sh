@@ -46,8 +46,6 @@ EOL
   fi
 done
 
-rm -f /opt/couchdb/data/.cluster_initialized
-
 echo 'Running CouchDB initialization script';
 
 # Install curl and jq
@@ -86,27 +84,33 @@ while true; do
 done
 
 # Check if the node count has increased
-if [[ $OLD_NODE_COUNT -ne 0 && $OLD_NODE_COUNT -gt $NODE_COUNT ]]; then
-  echo 'Removing nodes from the cluster';
-  # Remove the nodes that are no longer part of the cluster
-  for NODE_ID in $(seq $OLD_NODE_COUNT -1 $NODE_COUNT); do
-    echo "Removing node ${HOSTNAME_PREFIX}${NODE_ID}${DEPLOYMENT_NAME}"
+if [[ $OLD_NODE_COUNT -ne 0 && $OLD_NODE_COUNT -lt $NODE_COUNT ]]; then
+  echo 'Adding nodes to the cluster';
+  # Add the new nodes to the cluster
+  for NODE_ID in $(seq $(($OLD_NODE_COUNT + 1)) $NODE_COUNT); do
+    echo "Adding node couchdb${NODE_ID}${DEPLOYMENT_NAME}"
     NODE_ID_FULL="${HOSTNAME_PREFIX}${NODE_ID}${DEPLOYMENT_NAME}"
-    curl -X DELETE "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COORDINATOR}:5984/_node/_local/_nodes/${NODE_ID_FULL}"
+    curl -X PUT "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COORDINATOR}:5984/_node/_local/_nodes/couchdb@${NODE_ID_FULL}" -d '{}'
+    curl "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${NODE_ID_FULL}:5984/_session" -X GET
+    curl -X POST --max-time 30 -H "Content-Type: application/json" "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${NODE_ID_FULL}:5984/_cluster_setup" -d '{"action": "finish_cluster"}'
     sleep 1
   done
   exit 0;
 fi
 
 # Check if the node count has decreased
-if [[ $OLD_NODE_COUNT -ne 0 && $OLD_NODE_COUNT -lt $NODE_COUNT ]]; then
-  echo 'Adding nodes to the cluster';
-  # Add the new nodes to the cluster
-  for NODE_ID in $(seq $OLD_NODE_COUNT $NODE_COUNT); do
-    echo "Adding node couchdb${NODE_ID}${DEPLOYMENT_NAME}"
+if [[ $OLD_NODE_COUNT -ne 0 && $OLD_NODE_COUNT -gt $NODE_COUNT ]]; then
+  echo 'Removing nodes from the cluster';
+  # Remove the nodes that are no longer part of the cluster
+  for NODE_ID in $(seq $OLD_NODE_COUNT -1 $(($NODE_COUNT + 1))); do
+    echo "Removing node ${HOSTNAME_PREFIX}${NODE_ID}${DEPLOYMENT_NAME}"
     NODE_ID_FULL="${HOSTNAME_PREFIX}${NODE_ID}${DEPLOYMENT_NAME}"
-    curl -X PUT "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COORDINATOR}:5984/_node/_local/_nodes/${NODE_ID_FULL}" -d '{}'
-    sleep 1
+    # Get the response from the GET request
+    response=$(curl -s -X GET "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COORDINATOR}:5984/_node/_local/_nodes/couchdb@${NODE_ID_FULL}")
+    # Extract the rev value from the response
+    REV=$(echo $response | jq -r '.rev')
+    # Use the rev value in the DELETE request
+    curl -X DELETE "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COORDINATOR}:5984/_node/_local/_nodes/couchdb@${NODE_ID_FULL}?rev=${REV}"    sleep 1
   done
   exit 0;
 fi
@@ -122,6 +126,7 @@ curl -X PUT http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COORDINATOR}:5984/_glob
 sleep 1
 
 # Initialize the cluster
+echo "Enabling the cluster"
 curl -X POST \
       --max-time 30 \
       -H "Content-Type: application/json" "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COORDINATOR}:5984/_cluster_setup" \
@@ -132,6 +137,7 @@ sleep 1
 
 for NODE_ID in "${ADDITIONAL_NODES[@]}"
 do
+  echo "Adding node ${NODE_ID} to the cluster"
   curl -X POST --max-time 30 -H "Content-Type: application/json" "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COORDINATOR}:5984/_cluster_setup" -d '{"action": "enable_cluster", "bind_address":"0.0.0.0", "username": "'"${COUCHDB_USER}"'", "password":"'"${COUCHDB_PASSWORD}"'", "port": 5984, "node_count": "'"${NODE_COUNT}"'", "remote_node": "'"${NODE_ID}"'", "remote_current_user": "'"${COUCHDB_USER}"'", "remote_current_password": "'"${COUCHDB_PASSWORD}"'" }'
   curl -X POST --max-time 30 -H "Content-Type: application/json" "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COORDINATOR}:5984/_cluster_setup" -d '{"action": "add_node", "host":"'"${NODE_ID}"'", "port": 5984, "username": "'"${COUCHDB_USER}"'", "password":"'"${COUCHDB_PASSWORD}"'"}'
   echo You may safely ignore the warning above.
@@ -141,11 +147,14 @@ done
 # see http://github.com/apache/couchdb/issues/2858
 for NODE_ID in "${ALL_NODES[@]}"
 do
+  echo "Finishing cluster setup on node ${NODE_ID}"
   curl "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${NODE_ID}:5984/_session" -X GET
   curl -X POST --max-time 30 -H "Content-Type: application/json" "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${NODE_ID}:5984/_cluster_setup" -d '{"action": "finish_cluster"}'
   sleep 1
 done
 
+# Check the cluster status
+echo "Checking the cluster status"
 curl "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COORDINATOR}:5984/_session" -X GET
 sleep 1
 curl "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COORDINATOR}:5984/_cluster_setup" -X GET
