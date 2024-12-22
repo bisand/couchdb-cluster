@@ -31,8 +31,9 @@ for NODE_ID in $(seq 1 $NODE_COUNT); do
   mkdir -p "${NODE_FOLDER}/config"
   mkdir -p "${NODE_FOLDER}/data"
   mkdir -p "${NODE_FOLDER}/log"
-  # Add the specified text to 00-default.ini
-  cat <<EOL > "${NODE_FOLDER}/config/00-default.ini"
+  # Add the specified text to 00-default.ini if it doesn't exist
+  if [ ! -f "${NODE_FOLDER}/config/00-default.ini" ]; then
+    cat <<EOL > "${NODE_FOLDER}/config/00-default.ini"
 [chttpd]
 bind_address = 0.0.0.0
 
@@ -42,6 +43,7 @@ bind_address = 0.0.0.0
 [prometheus]
 bind_address = 0.0.0.0
 EOL
+  fi
 done
 
 rm -f /opt/couchdb/data/.cluster_initialized
@@ -151,7 +153,7 @@ sleep 1
 
 # Fetch the current membership information
 MEMBERSHIP=$(curl -s "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COORDINATOR}:5984/_membership" -X GET)
-echo "Membership data: $(echo "$MEMBERSHIP" | jq .)"
+echo "Membership data: $(echo "$MEMBERSHIP" | jq -c .)"
 
 # Parse all_nodes and cluster_nodes
 ALL_NODES=$(echo "$MEMBERSHIP" | jq -r '.all_nodes[]')
@@ -174,7 +176,7 @@ done
 
 # Fetch and display the updated membership
 UPDATED_MEMBERSHIP=$(curl -s "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COORDINATOR}:5984/_membership" -X GET)
-echo "Updated membership: $(echo "$UPDATED_MEMBERSHIP" | jq .)"
+echo "Updated membership: $(echo "$UPDATED_MEMBERSHIP" | jq -c .)"
 
 echo "Your cluster nodes are available at:"
 for NODE_ID in "${ALL_NODES[@]}"
