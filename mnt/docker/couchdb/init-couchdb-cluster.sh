@@ -95,6 +95,7 @@ if [[ $OLD_NODE_COUNT -ne 0 && $OLD_NODE_COUNT -lt $NODE_COUNT ]]; then
     curl -X POST --max-time 30 -H "Content-Type: application/json" "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${NODE_ID_FULL}:5984/_cluster_setup" -d '{"action": "finish_cluster"}'
     sleep 1
   done
+  echo "${NODE_COUNT}" > /opt/couchdb/data/.cluster_initialized;
   exit 0;
 fi
 
@@ -107,11 +108,19 @@ if [[ $OLD_NODE_COUNT -ne 0 && $OLD_NODE_COUNT -gt $NODE_COUNT ]]; then
     NODE_ID_FULL="${HOSTNAME_PREFIX}${NODE_ID}${DEPLOYMENT_NAME}"
     # Get the response from the GET request
     response=$(curl -s -X GET "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COORDINATOR}:5984/_node/_local/_nodes/couchdb@${NODE_ID_FULL}")
+    echo "Response: $response"
     # Extract the rev value from the response
-    REV=$(echo $response | jq -r '.rev')
+    REV=$(echo $response | jq -r '._rev')
+    echo "Rev: $REV"
     # Use the rev value in the DELETE request
-    curl -X DELETE "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COORDINATOR}:5984/_node/_local/_nodes/couchdb@${NODE_ID_FULL}?rev=${REV}"    sleep 1
+    curl -X DELETE "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@${COORDINATOR}:5984/_node/_local/_nodes/couchdb@${NODE_ID_FULL}?rev=${REV}"
+
+    NODE_FOLDER="${DATA_FOLDER_ROOT}${HOSTNAME_PREFIX}${NODE_ID}"
+    rm -rf "${NODE_FOLDER}"
+
+    sleep 1
   done
+  echo "${NODE_COUNT}" > /opt/couchdb/data/.cluster_initialized;
   exit 0;
 fi
 
