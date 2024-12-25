@@ -37,6 +37,9 @@ for NODE_ID in $(seq 1 $NODE_COUNT); do
 [chttpd]
 bind_address = 0.0.0.0
 
+[chttpd_auth]
+timeout = 1800
+
 [httpd]
 bind_address = 0.0.0.0
 
